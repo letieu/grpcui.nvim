@@ -153,6 +153,9 @@ H.open_payload_file = function(win, file_path, schema_file)
       file_name = request_file_name,
     },
   })
+
+  local current_buf = vim.api.nvim_get_current_buf()
+  UI.show_payload_help_text(current_buf)
 end
 
 --- Compile JSON schema from a proto file to a folder.
