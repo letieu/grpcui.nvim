@@ -2,19 +2,31 @@ local GrpcUi = {}
 local UI = require('grpcui.ui')
 local Grpc = require('grpcui.grpc')
 
-local default_workspace_config = function(name_space)
+local H = {}
+
+H.get_name_space_prefix_folder = function(name_space)
+  local prefix_path = vim.fs.joinpath(
+    vim.fn.stdpath('data'),
+    'grpcui.nvim',
+    'data',
+    name_space
+  )
+  return prefix_path
+end
+
+local default_workspace_config = function(name_space, proto_folder)
+  local prefix_path = H.get_name_space_prefix_folder(name_space)
+
   return {
     endpoint = 'localhost:5000',
-    import_path = '/home/tieu/code/playground/nest-rpc/src/hero/',
+    import_path = proto_folder,
+    search = proto_folder,
     folder = {
-      search = '/home/tieu/code/playground/nest-rpc/src/',
-      schema = '/tmp/grpcui.nvim/data/' .. name_space .. '/schemas',
-      payload = '/tmp/grpcui.nvim/data/' .. name_space .. '/payloads',
+      schema = vim.fs.joinpath(prefix_path, 'schemas'),
+      payload = vim.fs.joinpath(prefix_path, 'payloads'),
     },
   }
 end
-
-local H = {}
 
 --- @class Bffers
 --- @field payload integer
@@ -29,10 +41,10 @@ local H = {}
 --- @class NamespaceConfig
 --- @field endpoint string
 --- @field import_path string
+--- @field search string
 --- @field folder NamespaceFolder
 
 --- @class NamespaceFolder
---- @field search string
 --- @field schema string
 --- @field payload string
 
@@ -41,8 +53,13 @@ local H = {}
 --- @return NamespaceConfig: The configuration table for the given namespace.
 H.get_name_space_config = function(name_space)
   local config_file = H.get_workspace_config_file_path(name_space)
+
   if vim.fn.filereadable(config_file) == 0 then
-    vim.fn.writefile({ vim.fn.json_encode(default_workspace_config(name_space)) }, config_file)
+    H.try_create_folder(vim.fn.fnamemodify(config_file, ':h'))
+    H.try_create_file(config_file)
+
+    local json_data = vim.fn.json_encode(default_workspace_config(name_space, ''))
+    vim.fn.writefile({ json_data }, config_file)
   end
 
   local success, json_config = pcall(vim.fn.json_decode, vim.fn.join(vim.fn.readfile(config_file)) or '{}')
@@ -57,7 +74,7 @@ H.get_name_space_config = function(name_space)
 end
 
 H.get_workspace_config_file_path = function(name_space)
-  return '/tmp/grpcui.nvim/data/' .. name_space .. '/config.json'
+  return H.get_name_space_prefix_folder(name_space) .. '/config.json'
 end
 
 H.get_lsp_config = function()
@@ -216,21 +233,21 @@ H.setup_global_keys = function(name_space_config, bufs, wins)
   vim.api.nvim_set_keymap('n', '<leader>s', '', {
     noremap = true,
     callback = function()
-      UI.open_select_proto(name_space_config.folder.search, function(proto_file, method_def)
+      UI.open_select_proto(name_space_config.search, function(proto_file, method_def)
         local proto_content = H.read_file_content(
-          vim.fs.joinpath(name_space_config.folder.search, proto_file)
+          vim.fs.joinpath(name_space_config.search, proto_file)
         )
         local method = H.parse_method_def(method_def, proto_content)
 
         UI.render_method(bufs.method, proto_file, method)
 
         vim.api.nvim_win_set_var(wins.method, 'method', method.full_name)
-        local file_path = vim.fs.joinpath(name_space_config.folder.search, proto_file)
+        local file_path = vim.fs.joinpath(name_space_config.search, proto_file)
         vim.api.nvim_win_set_var(wins.method, 'proto_file', file_path)
 
         H.compile_json_schema(
           name_space_config.folder.schema,
-          name_space_config.folder.search,
+          name_space_config.search,
           name_space_config.import_path,
           proto_file
         )
@@ -316,6 +333,17 @@ GrpcUi.open = function(name_space)
   })
 
   vim.api.nvim_set_current_win(wins.method)
+
+  if name_space_config.import_path == '' then
+    vim.notify('Please set `import_path` and `search` in the configuration file')
+    UI.show_config_float(
+      H.get_workspace_config_file_path(name_space),
+      function()
+        GrpcUi.open(name_space)
+      end
+    )
+    return
+  end
 end
 
 H.close = function(tab_id)

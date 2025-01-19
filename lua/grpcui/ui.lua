@@ -58,7 +58,7 @@ UI.init_ui = function()
     0,
     {
       virt_text = {
-        { "Select a method by pressing 's'", "Comment" },
+        { "Select method by pressing '<leader>s', Configure by pressing '<leader>c', Close by pressing '<leader>q'", "Comment" },
       },
     }
   )
@@ -132,7 +132,7 @@ UI.render_method = function(buf, file, method)
   vim.api.nvim_buf_add_highlight(buf, -1, 'Comment', 3, 0, label_width)
   vim.api.nvim_buf_add_highlight(buf, -1, 'Type', 3, label_width, -1)
 
-  vim.api.nvim_buf_set_lines(buf, 4, 5, false, { "Press 's' to select another method" })
+  vim.api.nvim_buf_set_lines(buf, 4, 5, false, { "Press '<leader>s' to select another method" })
   vim.api.nvim_buf_add_highlight(buf, -1, 'Comment', 4, 0, -1)
 
   vim.api.nvim_set_option_value('modifiable', false, { buf = buf })
@@ -191,6 +191,22 @@ UI.show_config_float = function(config_path, on_saved)
       on_saved()
     end
   })
+
+  vim.api.nvim_buf_clear_namespace(buf, get_ns_id(), 0, -1)
+  vim.api.nvim_buf_set_extmark(
+    buf,
+    get_ns_id(),
+    0,
+    0,
+    {
+      virt_text = {
+        { ":help grpcui.config", "Comment" },
+      },
+      virt_text_pos = 'right_align',
+    }
+  )
+
+  return buf, win
 end
 
 return UI
