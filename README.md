@@ -2,7 +2,7 @@
 
 Interactive gRPC client for neovim
 
-![image](https://github.com/user-attachments/assets/7d71426b-47e9-45d7-a565-f0ef62529780)
+![image](https://github.com/user-attachments/assets/dc433eff-ae27-458e-b4d5-ef216460dd84)
 
 > [!CAUTION]
 > Currently, this plugin is under development. It may not work as expected.
