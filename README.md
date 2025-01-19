@@ -18,6 +18,7 @@ Interactive gRPC client for neovim
     - `protoc`: https://grpc.io/docs/protoc-installation/
     - `protoc-gen-jsonschema`: https://github.com/chrusty/protoc-gen-jsonschema
     - `grpcurl`: https://github.com/fullstorydev/grpcurl
+    - `json lsp`: `npm install -g vscode-json-languageserver`
 
 * With **lazy.nvim**
 ```lua
