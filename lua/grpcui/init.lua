@@ -2,6 +2,18 @@ local GrpcUi = {}
 local UI = require('grpcui.ui')
 local Grpc = require('grpcui.grpc')
 
+local default_workspace_config = function(name_space)
+  return {
+    endpoint = 'localhost:5000',
+    import_path = '/home/tieu/code/playground/nest-rpc/src/hero/',
+    folder = {
+      search = '/home/tieu/code/playground/nest-rpc/src/',
+      schema = '/tmp/grpcui.nvim/data/' .. name_space .. '/schemas',
+      payload = '/tmp/grpcui.nvim/data/' .. name_space .. '/payloads',
+    },
+  }
+end
+
 local H = {}
 
 --- @class Bffers
@@ -28,26 +40,24 @@ local H = {}
 --- @param name_space string: The namespace to get the configuration for.
 --- @return NamespaceConfig: The configuration table for the given namespace.
 H.get_name_space_config = function(name_space)
-  return {
-    endpoint = 'localhost:5000',
-    import_path = '/tmp/nest-rpc/src/hero',
-    folder = {
-      search = '/tmp/nest-rpc/src/',
-      schema = '/tmp/grpcui.nvim/data/' .. name_space .. '/schemas',
-      payload = '/tmp/grpcui.nvim/data/' .. name_space .. '/payloads',
-    },
-  }
-  -- return {
-  --   endpoint = 'grpcb.in:9000',
-  --   proto_paths = {
-  --     '/tmp/pb/hello/',
-  --   },
-  --   folder = {
-  --     search = '/tmp/pb/hello/',
-  --     schema = '/tmp/grpcui.nvim/data/' .. name_space .. '/schemas',
-  --     payload = '/tmp/grpcui.nvim/data/' .. name_space .. '/payloads',
-  --   },
-  -- }
+  local config_file = H.get_workspace_config_file_path(name_space)
+  if vim.fn.filereadable(config_file) == 0 then
+    vim.fn.writefile({ vim.fn.json_encode(default_workspace_config(name_space)) }, config_file)
+  end
+
+  local success, json_config = pcall(vim.fn.json_decode, vim.fn.join(vim.fn.readfile(config_file)) or '{}')
+  if not success then
+    vim.notify('Failed to parse config file: ' .. config_file)
+    return {
+      "Failed to parse config file: " .. config_file
+    }
+  end
+
+  return json_config
+end
+
+H.get_workspace_config_file_path = function(name_space)
+  return '/tmp/grpcui.nvim/data/' .. name_space .. '/config.json'
 end
 
 H.get_lsp_config = function()
@@ -207,7 +217,9 @@ H.setup_global_keys = function(name_space_config, bufs, wins)
     noremap = true,
     callback = function()
       UI.open_select_proto(name_space_config.folder.search, function(proto_file, method_def)
-        local proto_content = H.read_file_content(name_space_config.folder.search .. proto_file)
+        local proto_content = H.read_file_content(
+          vim.fs.joinpath(name_space_config.folder.search, proto_file)
+        )
         local method = H.parse_method_def(method_def, proto_content)
 
         UI.render_method(bufs.method, proto_file, method)
@@ -271,17 +283,46 @@ H.setup_global_keys = function(name_space_config, bufs, wins)
 end
 
 GrpcUi.open = function(name_space)
-  local name_space_config = H.get_name_space_config('hero')
-  local buffers, wins = UI.init_ui()
+  if not name_space then
+    name_space = 'default'
+  end
+
+  local name_space_config = H.get_name_space_config(name_space)
+
+  local buffers, wins, tab_id = UI.init_ui()
 
   H.setup_global_keys(name_space_config, buffers, wins)
 
   H.setup_lsp(H.get_lsp_config())
 
+  vim.api.nvim_set_keymap('n', '<leader>q', '', {
+    noremap = true,
+    callback = function()
+      H.close(tab_id)
+    end
+  })
+
+  vim.api.nvim_set_keymap('n', '<leader>c', '', {
+    noremap = true,
+    callback = function()
+      UI.show_config_float(
+        H.get_workspace_config_file_path(name_space),
+        function()
+          H.close(tab_id)
+          GrpcUi.open(name_space)
+        end
+      )
+    end
+  })
+
   vim.api.nvim_set_current_win(wins.method)
 end
 
-GrpcUi.setup = function()
+H.close = function(tab_id)
+  local current_tab = vim.api.nvim_get_current_tabpage()
+  if current_tab == tab_id then
+    vim.api.nvim_command('tabclose')
+  end
 end
 
 return GrpcUi

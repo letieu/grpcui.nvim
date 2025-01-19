@@ -22,6 +22,7 @@ end)()
 
 UI.init_ui = function()
   vim.api.nvim_command('tabnew')
+  local tab_id = vim.api.nvim_get_current_tabpage()
 
   local current_width = vim.api.nvim_get_option_value('columns', {})
 
@@ -62,7 +63,7 @@ UI.init_ui = function()
     }
   )
 
-  return buffers, wins
+  return buffers, wins, tab_id
 end
 
 --- Open a fzf window to select a proto file and method.
@@ -155,6 +156,41 @@ UI.render_response = function(buf, response)
   local lines = vim.split(response, '\n')
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.api.nvim_set_option_value('modifiable', false, { buf = buf })
+end
+
+UI.show_config_float = function(config_path, on_saved)
+  local width = 100
+  local height = 30
+
+  local editor_width = vim.api.nvim_get_option_value("columns", {})
+  local editor_height = vim.api.nvim_get_option_value("lines", {})
+
+  local row = math.floor((editor_height - height) / 2)
+  local col = math.floor((editor_width - width) / 2)
+
+
+  local buf = vim.fn.bufadd(config_path)
+  vim.fn.bufload(buf)
+
+  vim.api.nvim_set_option_value('filetype', 'json', { buf = buf })
+  local win = vim.api.nvim_open_win(buf, true, {
+    relative = 'editor',
+    width = width,
+    height = height,
+    row = row,
+    col = col,
+    style = 'minimal',
+    border = 'rounded',
+  })
+
+  vim.api.nvim_set_current_win(win)
+
+  vim.api.nvim_create_autocmd('BufWritePost', {
+    buffer = buf,
+    callback = function()
+      on_saved()
+    end
+  })
 end
 
 return UI
