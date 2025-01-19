@@ -9,6 +9,7 @@ Interactive gRPC client for neovim
 
 ## Feature:
 - Autocomplete json payload
+- Payload validate with `jsonls`
 - Easy to select, change the rpc method to run with `fzf-lua`
 
 ## Installation
@@ -57,9 +58,8 @@ require('grpcui').open("MyProject")
 **Default config**
 
 ```lua
--- TODO:
 require('grpcui').setup({
-    prefix_path = vim.fn.stdpath('data') .. '/grpcui.nvim',
+    jsonls_cmd = { 'vscode-json-languageserver', '--stdio' }
 })
 
 ```

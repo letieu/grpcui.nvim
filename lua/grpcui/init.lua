@@ -4,6 +4,11 @@ local Grpc = require('grpcui.grpc')
 
 local H = {}
 
+--- @class CustomConfig
+--- @field jsonls_cmd string
+
+local cache_custom_config = {} --- @type CustomConfig
+
 H.get_name_space_prefix_folder = function(name_space)
   local prefix_path = vim.fs.joinpath(
     vim.fn.stdpath('data'),
@@ -77,13 +82,13 @@ H.get_workspace_config_file_path = function(name_space)
   return H.get_name_space_prefix_folder(name_space) .. '/config.json'
 end
 
-H.get_lsp_config = function()
+H.get_lsp_config = function(custom_config)
   local client_capabilities = vim.lsp.protocol.make_client_capabilities()
   client_capabilities.textDocument.completion.completionItem.snippetSupport = true
 
   return { --- @type vim.lsp.ClientConfig
     name = "protobuf_jsonls",
-    cmd = { '/home/tieu/.local/share/nvim/mason/bin/vscode-json-language-server', '--stdio' },
+    cmd = custom_config.jsonls_cmd or { 'vscode-json-languageserver', '--stdio' },
     init_options = {
       provideFormatter = true,
     },
@@ -310,7 +315,7 @@ GrpcUi.open = function(name_space)
 
   H.setup_global_keys(name_space_config, buffers, wins)
 
-  H.setup_lsp(H.get_lsp_config())
+  H.setup_lsp(H.get_lsp_config(cache_custom_config))
 
   vim.api.nvim_set_keymap('n', '<leader>q', '', {
     noremap = true,
@@ -344,6 +349,10 @@ GrpcUi.open = function(name_space)
     )
     return
   end
+end
+
+GrpcUi.setup = function(custom_config)
+  cache_custom_config = custom_config
 end
 
 H.close = function(tab_id)
