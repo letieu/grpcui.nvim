@@ -1,5 +1,6 @@
 local GrpcUi = {}
 local UI = require('grpcui.ui')
+local Grpc = require('grpcui.grpc')
 
 local H = {}
 
@@ -15,7 +16,7 @@ local H = {}
 
 --- @class NamespaceConfig
 --- @field endpoint string
---- @field proto_paths string[]
+--- @field import_path string
 --- @field folder NamespaceFolder
 
 --- @class NamespaceFolder
@@ -28,16 +29,25 @@ local H = {}
 --- @return NamespaceConfig: The configuration table for the given namespace.
 H.get_name_space_config = function(name_space)
   return {
-    endpoint = 'http://localhost:8080',
-    proto_paths = {
-      '/home/tieu/code/ONE/om-protobuf/proto',
-    },
+    endpoint = 'localhost:5000',
+    import_path = '/tmp/nest-rpc/src/hero',
     folder = {
-      search = '/home/tieu/code/ONE/om-protobuf/proto/chorus/com/',
+      search = '/tmp/nest-rpc/src/',
       schema = '/tmp/grpcui.nvim/data/' .. name_space .. '/schemas',
       payload = '/tmp/grpcui.nvim/data/' .. name_space .. '/payloads',
     },
   }
+  -- return {
+  --   endpoint = 'grpcb.in:9000',
+  --   proto_paths = {
+  --     '/tmp/pb/hello/',
+  --   },
+  --   folder = {
+  --     search = '/tmp/pb/hello/',
+  --     schema = '/tmp/grpcui.nvim/data/' .. name_space .. '/schemas',
+  --     payload = '/tmp/grpcui.nvim/data/' .. name_space .. '/payloads',
+  --   },
+  -- }
 end
 
 H.get_lsp_config = function()
@@ -67,11 +77,12 @@ end
 --- @field name string
 --- @field request string
 --- @field response string
+--- @field full_name string
 
 --- Parse a method definition string into a table.
 --- @param method_def string: The method definition string to parse.
 --- @return RpcMethod: The parsed method definition.
-H.parse_method_def = function(method_def)
+H.parse_method_def = function(method_def, proto_content)
   local name = method_def:match('rpc (%w+)')
   local request = method_def:match('%((%w+)%)')
   local response = method_def:match('returns %(([^)]+)%)')
@@ -81,48 +92,28 @@ H.parse_method_def = function(method_def)
   request = request:gsub('^%s*(.-)%s*$', '%1')
   response = response:gsub('^%s*(.-)%s*$', '%1')
 
+  -- Extract service and package from proto_file
+  local service = proto_content:match('service (%w+)')
+  local package = proto_content:match('package ([%w%.]+)')
+
   return {
     name = name,
+    full_name = package .. '.' .. service .. '.' .. name,
     request = request,
     response = response,
   }
 end
 
---- Setup keybindings for the method buffer.
---- @param name_space_config NamespaceConfig: The configuration for the current namespace.
---- @param bufs Bffers: list of buffers.
---- @param wins Wins: list of wins.
-H.setup_method_keys = function(name_space_config, bufs, wins)
-  vim.api.nvim_buf_set_keymap(bufs.method, 'n', 's', '', {
-    noremap = true,
-    callback = function()
-      UI.open_select_proto(name_space_config.folder.search, function(proto_file, method_def)
-        local method = H.parse_method_def(method_def)
-
-        UI.render_method(bufs.method, proto_file, method)
-
-        H.compile_json_schema(
-          name_space_config.folder.schema,
-          name_space_config.folder.search,
-          name_space_config.proto_paths,
-          proto_file
-        )
-
-        local payload_file = name_space_config.folder.payload .. '/' .. method.request .. '.json'
-        H.try_create_folder(name_space_config.folder.payload)
-        H.try_create_file(payload_file)
-        H.open_payload_file(
-          wins.payload,
-          payload_file,
-          H.get_schema_file(name_space_config.folder.schema, proto_file, method)
-        )
-      end)
-    end
-  })
+H.read_file_content = function(file_path)
+  local file = io.open(file_path, "r")
+  if not file then return nil end
+  local content = file:read("*all")
+  file:close()
+  return content
 end
 
 H.get_schema_file = function(schema_folder, proto_file, method)
-  return schema_folder .. '/' .. proto_file .. '/' .. method.request .. '.json'
+  return vim.fs.joinpath(schema_folder, proto_file, method.request) .. '.json'
 end
 
 H.try_create_folder = function(folder)
@@ -160,17 +151,21 @@ end
 
 --- Compile JSON schema from a proto file to a folder.
 --- @param schema_folder string: The folder to store the compiled schema.
---- @param proto_paths string[]: The proto paths to search for imports.
+--- @param import_path string: The proto path to search for imports.
 --- @param proto_file string: The proto file to compile.
 --- @return string: The result of the compilation.
-H.compile_json_schema = function(schema_folder, search_folder, proto_paths, proto_file)
-  local target_folder = schema_folder .. '/' .. proto_file
+H.compile_json_schema = function(schema_folder, search_folder, import_path, proto_file)
+  local target_folder = vim.fs.joinpath(schema_folder, proto_file)
   H.try_create_folder(target_folder)
 
-  local full_path = search_folder .. '/' .. proto_file
+  local full_path = vim.fs.joinpath(search_folder, proto_file)
 
-  local cmd = string.format('protoc --jsonschema_out=%s --proto_path=%s %s', target_folder,
-    table.concat(proto_paths, ' '), full_path)
+  local cmd = string.format(
+    'protoc --jsonschema_out=%s --proto_path=%s %s',
+    target_folder,
+    import_path,
+    full_path
+  )
 
   local result = vim.fn.system(cmd) -- TODO: handle error
   return result
@@ -192,6 +187,8 @@ H.setup_lsp = function(lsp_config)
       })
 
       -- TODO: try stop old
+
+      ---@diagnostic disable-next-line: missing-fields
       vim.lsp.start(config, {
         bufnr = ev.buf
       })
@@ -199,11 +196,86 @@ H.setup_lsp = function(lsp_config)
   })
 end
 
+H.get_payload = function(buf)
+  local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+  return table.concat(lines, '\n')
+end
+
+H.setup_global_keys = function(name_space_config, bufs, wins)
+  -- Select a rpc method
+  vim.api.nvim_set_keymap('n', '<leader>s', '', {
+    noremap = true,
+    callback = function()
+      UI.open_select_proto(name_space_config.folder.search, function(proto_file, method_def)
+        local proto_content = H.read_file_content(name_space_config.folder.search .. proto_file)
+        local method = H.parse_method_def(method_def, proto_content)
+
+        UI.render_method(bufs.method, proto_file, method)
+
+        vim.api.nvim_win_set_var(wins.method, 'method', method.full_name)
+        local file_path = vim.fs.joinpath(name_space_config.folder.search, proto_file)
+        vim.api.nvim_win_set_var(wins.method, 'proto_file', file_path)
+
+        H.compile_json_schema(
+          name_space_config.folder.schema,
+          name_space_config.folder.search,
+          name_space_config.import_path,
+          proto_file
+        )
+
+        local payload_file = name_space_config.folder.payload .. '/' .. method.request .. '.json'
+        H.try_create_folder(name_space_config.folder.payload)
+        H.try_create_file(payload_file)
+        H.open_payload_file(
+          wins.payload,
+          payload_file,
+          H.get_schema_file(name_space_config.folder.schema, proto_file, method)
+        )
+      end)
+    end
+  })
+
+  -- Send the request
+  vim.api.nvim_set_keymap('n', '<leader>r', '', {
+    noremap = true,
+    callback = function()
+      local method = vim.api.nvim_win_get_var(wins.method, 'method')
+      local proto_file = vim.api.nvim_win_get_var(wins.method, 'proto_file')
+      local payload = H.get_payload(bufs.payload)
+
+      Grpc.call(
+        name_space_config.endpoint,
+        {
+          import_path = name_space_config.import_path,
+          proto = proto_file,
+        },
+        method,
+        payload,
+        {
+          on_start = function()
+            UI.render_response(bufs.response, 'Loading...')
+          end,
+          on_data = function(data)
+            vim.schedule(function()
+              UI.render_response(bufs.response, data)
+            end)
+          end,
+          on_error = function(error)
+            vim.schedule(function()
+              UI.render_response(bufs.response, error)
+            end)
+          end,
+        })
+    end
+  })
+end
+
 GrpcUi.open = function(name_space)
-  local name_space_config = H.get_name_space_config(name_space)
+  local name_space_config = H.get_name_space_config('hero')
   local buffers, wins = UI.init_ui()
 
-  H.setup_method_keys(name_space_config, buffers, wins)
+  H.setup_global_keys(name_space_config, buffers, wins)
+
   H.setup_lsp(H.get_lsp_config())
 
   vim.api.nvim_set_current_win(wins.method)
