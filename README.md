@@ -32,7 +32,7 @@ Interactive gRPC client for neovim
 
 ## Usage
 
-1. Open: `require('grpcui).open('MyProject')` (Open with namespace `MyProject`)
+1. Open: `require('grpcui').open('MyProject')` (Open with namespace `MyProject`)
 2. Update `config.json` file:
     - `import_path`: is **folder** that import relate proto file
     - `search`: is **folder** that start search `*.proto` file from. Can be same with `import_path`
